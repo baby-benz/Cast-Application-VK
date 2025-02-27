@@ -1,6 +1,7 @@
 package ru.ok.cast_app.presentation
 
-import android.media.MediaRouter
+import androidx.mediarouter.media.MediaRouter
+import androidx.annotation.UiThread
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -15,26 +16,42 @@ import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastState
 import com.google.android.gms.cast.framework.CastStateListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.google.android.gms.common.api.Status
 
-data class Device(val id: String, val name: String?)
+enum class CastStatus {
+    NOT_READY,
+    CONNECTING,
+    READY,
+    PLAYING,
+    PAUSED
+}
 
 class MainScreenViewModel(
     private val castContext: CastContext,
     private val mediaRouter: MediaRouter
 ) : ViewModel() {
+    init {
+        castContext.addCastStateListener(castStateListener())
+        mediaRouter.addCallback(
+            MediaRouteSelector.Builder()
+                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
+                .build(),
+            mediaRouterCallBack(),
+            MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN
+        )
+    }
+
+    var urlCorrect by mutableStateOf(true)
+    var url by mutableStateOf("https://videolink-test.mycdn.me/?pct=1&sig=6QNOvp0y3BE&ct=0&clientType=45&mid=193241622673&type=5")
+    var castStatus by mutableStateOf(CastStatus.NOT_READY)
+    var deviceName by mutableStateOf<String?>(null)
+    var currentPlayProgress by mutableFloatStateOf(0f)
+
     private val httpUrlRegex =
         Regex("https?://(www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)")
 
-    var searchInProgress by mutableStateOf(false)
-    var readyToCast by mutableStateOf(false)
-    var casting by mutableStateOf(false)
-
-    var currentPlayProgress by mutableFloatStateOf(0f)
-
-    var deviceToCast by mutableStateOf<Device?>(null)
-
-    private lateinit var url: String
     private lateinit var mediaClient: RemoteMediaClient
+    private lateinit var selectedRoute: MediaRouter.RouteInfo
 
     private var connected: Boolean = false
 
@@ -45,23 +62,38 @@ class MainScreenViewModel(
             urlToCheck = "https://".plus(url)
         }
 
+        this.url = url
+
         if (httpUrlRegex.matches(urlToCheck)) {
-            this.url = url
+            urlCorrect = true
             if (connected) {
-                readyToCast = true
+                castStatus = CastStatus.READY
             }
+        } else {
+            urlCorrect = false
+            castStatus = CastStatus.NOT_READY
         }
     }
 
+    @UiThread
+    fun connect() {
+        mediaRouter.selectRoute(selectedRoute)
+        castStatus = CastStatus.CONNECTING
+    }
+
+    @UiThread
     fun refreshDevices() {
-        mediaRouter.addCallback(MediaRouteSelector.Builder()
-            .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-            .build(),
+        deviceName = null
+        mediaRouter.addCallback(
+            MediaRouteSelector.Builder()
+                .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
+                .build(),
             mediaRouterCallBack(),
             MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN
         )
     }
 
+    @UiThread
     fun startCast() {
         val videoMetadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, url)
@@ -73,125 +105,76 @@ class MainScreenViewModel(
 
         val mediaLoadRequestData = MediaLoadRequestData.Builder()
             .setMediaInfo(mediaInfo.build())
-            .setAutoplay(true)
 
-        mediaClient.registerCallback(mediaClientCallback())
-        mediaClient?.load(mediaLoadRequestData.build())
+        mediaClient.addProgressListener(progressListener(), 200)
+        mediaClient.load(mediaLoadRequestData.build()).addStatusListener {
+            if (it == Status.RESULT_SUCCESS) {
+                castStatus = CastStatus.PLAYING
+            }
+        }
     }
 
-    fun startPlay() {
-
+    @UiThread
+    fun play() {
+        mediaClient.play().addStatusListener {
+            if (it == Status.RESULT_SUCCESS) {
+                castStatus = CastStatus.PLAYING
+            }
+        }
     }
 
-    fun stopPlay() {
-
+    @UiThread
+    fun pause() {
+        mediaClient.pause().addStatusListener {
+            if (it == Status.RESULT_SUCCESS) {
+                castStatus = CastStatus.PAUSED
+            }
+        }
     }
 
+    @UiThread
     private fun castStateListener() = CastStateListener {
-        when (it) {
-            CastState.CONNECTED -> {
-                val castSession = castContext.sessionManager.currentCastSession
+        if (it == CastState.CONNECTED) {
+            val castSession = castContext.sessionManager.currentCastSession
 
-                if (castSession == null) {
-                    readyToCast = false
-                } else {
-                    mediaClient = castSession.remoteMediaClient!!
-                    mediaClient.stop()
-                    mediaClient.registerCallback(mediaClientCallback())
-                    readyToCast = true
-                    connected = true
+            if (castSession == null) {
+                castStatus = CastStatus.NOT_READY
+            } else {
+                mediaClient = castSession.remoteMediaClient!!
+                mediaClient.stop()
+                connected = true
+                if (urlCorrect) {
+                    castStatus = CastStatus.READY
                 }
             }
         }
     }
 
-    private fun mediaClientCallback() = object : RemoteMediaClient.Callback() {
-        override fun onStatusUpdated() {
-            mediaClient.addProgressListener(progressListener(), 200)
-        }
-    }
+    private fun progressListener() =
+        RemoteMediaClient.ProgressListener { position: Long, duration: Long ->
+            if (duration <= 0) return@ProgressListener
 
-    private fun progressListener() =  RemoteMediaClient.ProgressListener { position: Long, duration: Long ->
-        if (duration <= 0) return@ProgressListener
-
-        if (position > 0) {
-            currentPlayProgress = position.toFloat() / duration
-        }
-    }
-
-    private fun mediaRouterCallBack() = object: MediaRouter.Callback() {
-        override fun onRouteSelected(
-            router: MediaRouter?,
-            type: Int,
-            info: MediaRouter.RouteInfo?
-        ) {
-            TODO("Not yet implemented")
+            if (position > 0) {
+                currentPlayProgress = position.toFloat() / duration
+            }
         }
 
-        override fun onRouteUnselected(
-            router: MediaRouter?,
-            type: Int,
-            info: MediaRouter.RouteInfo?
-        ) {
-            TODO("Not yet implemented")
-        }
-
+    private fun mediaRouterCallBack() = object : MediaRouter.Callback() {
         override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) {
-            mediaRouter.removeCallback(mediaRouterCallBack())
+            mediaRouter.removeCallback(this)
+            deviceName = route.name
+            selectedRoute = route
         }
 
         override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) {
+            if (route.name == deviceName) {
+                deviceName = null
+            }
         }
 
         override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) {
-            device = Device(route.id, route.name)
-        }
-
-        override fun onRouteGrouped(
-            router: MediaRouter?,
-            info: MediaRouter.RouteInfo?,
-            group: MediaRouter.RouteGroup?,
-            index: Int
-        ) {
-            TODO("Not yet implemented")
-        }
-
-        override fun onRouteUngrouped(
-            router: MediaRouter?,
-            info: MediaRouter.RouteInfo?,
-            group: MediaRouter.RouteGroup?
-        ) {
-            super.onRouteUngrouped(router, info, group)
-        }
-
-        override fun onRouteVolumeChanged(router: MediaRouter?, info: MediaRouter.RouteInfo?) {
-            TODO("Not yet implemented")
-        }
-
-        override fun onRouteSelected(
-            router: MediaRouter,
-            selectedRoute: MediaRouter.RouteInfo,
-            reason: Int,
-            requestedRoute: MediaRouter.RouteInfo
-        ) {
-            mediaRouter = router
-
+            deviceName = route.name
+            selectedRoute = route
         }
     }
-
-    /* fun startSearch(){
-         search.start()
-
-         val selector = MediaRouteSelector.Builder()
-             // These are the framework-supported intents
-             //.addControlCategory(MediaControlIntent.CATEGORY_LIVE_AUDIO)
-             //.addControlCategory(MediaControlIntent.CATEGORY_LIVE_VIDEO)
-             .addControlCategory(MediaControlIntent.CATEGORY_REMOTE_PLAYBACK)
-             .build()
-
-         mediaRouter.addCallback(selector, mediaRouterCallBack(), MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN)
-
-
-         deviceState = CastDeviceState.SEARCHING
-     }*/
 }

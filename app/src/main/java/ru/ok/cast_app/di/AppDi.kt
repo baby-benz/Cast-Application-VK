@@ -6,6 +6,6 @@ import ru.ok.cast_app.presentation.MainScreenViewModel
 
 val appModule = module {
     viewModel<MainScreenViewModel> {
-        MainScreenViewModel(castContext = get())
+        MainScreenViewModel(castContext = get(), mediaRouter = get())
     }
 }

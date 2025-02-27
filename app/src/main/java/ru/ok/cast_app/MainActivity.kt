@@ -4,37 +4,32 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,6 +40,7 @@ import org.koin.androidx.viewmodel.ext.android.viewModel
 import org.koin.core.context.startKoin
 import ru.ok.cast_app.di.appModule
 import ru.ok.cast_app.di.castModule
+import ru.ok.cast_app.presentation.CastStatus
 import ru.ok.cast_app.presentation.MainScreenViewModel
 import ru.ok.cast_app.ui.theme.CastApplicationOKruTheme
 
@@ -75,25 +71,18 @@ class MainActivity : ComponentActivity() {
     @Preview
     @Composable
     fun MainScreen(modifier: Modifier = Modifier) {
-        var videoUrl by remember {
-            mutableStateOf("https://videolink-test.mycdn.me/?pct=1&sig=6QNOvp0y3BE&ct=0&clientType=45&mid=193241622673&type=5")
-        }
-        var isUrlCorrect by remember {
-            mutableStateOf(true)
-        }
-
-        Box(
+        Column(
             modifier,
-            contentAlignment = Alignment.TopCenter
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
         ) {
             TextField(
-                value = videoUrl,
+                value = viewModel.url,
                 onValueChange = {
-                    isUrlCorrect = viewModel.handleUrlChange(it)
-                    videoUrl = it
+                    viewModel.handleUrlChange(it)
                 },
                 supportingText = {
-                    if (!isUrlCorrect) {
+                    if (!viewModel.urlCorrect) {
                         Text(
                             text = "URL имеет неправильный формат",
                             color = MaterialTheme.colorScheme.error
@@ -101,7 +90,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 trailingIcon = {
-                    if (!isUrlCorrect) {
+                    if (!viewModel.urlCorrect) {
                         Icon(
                             Icons.Default.Warning,
                             "Неверный URL",
@@ -114,54 +103,80 @@ class MainActivity : ComponentActivity() {
                 }
             )
 
-            IconButton(
-                enabled = viewModel.searchInProgress,
-                onClick = {
-                    viewModel.refreshDevices()
-                }) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Обновление списка устройств")
+            if (viewModel.deviceName == null) {
+                LinearProgressIndicator()
             }
 
-            DeviceItem(device = currentDevice, icon = {
-                when(currentDevice) {
-                    is ChromeCastDevice -> Icon(imageVector = Icons.Default.Cast, contentDescription = null)
-                    is SamsungDevice -> Icon(imageVector = Icons.Default.Tv, contentDescription = null)
-                }
-            }, loading = true)
-
-            Box(
-                modifier = modifier.padding(bottom = 10.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                FilledTonalButton(
-                    onClick = {
-                        viewModel.castVideo()
-                    },
-                    enabled = isUrlCorrect && viewModel.readyToCast,
-                    shape = RoundedCornerShape(20),
-                    modifier = Modifier.width(IntrinsicSize.Max)
-                ) {
-                    Text("Cast")
-                }
-            }
-
-            Column(
-                modifier = modifier
-            ) {
+            if (viewModel.deviceName != null
+                && (viewModel.castStatus == CastStatus.NOT_READY || viewModel.castStatus == CastStatus.CONNECTING)) {
                 IconButton(
-                    enabled = viewModel.readyToCast,
+                    enabled = viewModel.deviceName != null,
                     onClick = {
-                        if (viewModel.casting) viewModel.pause() else viewModel.play()
+                        viewModel.refreshDevices()
                     }) {
-                    Icon(
-                        if (viewModel.casting) Icons.Default.else Icons . Filled . PlayArrow,
-                        contentDescription = "Localized description"
-                    )
+                    Icon(Icons.Filled.Refresh, contentDescription = "Обновление списка устройств")
                 }
-                LinearProgressIndicator(
-                    progress = { viewModel.currentPlayTime.toFloat() }
+
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.clickable { viewModel.connect() }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cast,
+                        contentDescription = null
+                    )
+                    Text(text = viewModel.deviceName.toString())
+                    if (viewModel.castStatus == CastStatus.CONNECTING) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp, 20.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+
+        Column(
+            modifier.padding(bottom = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Bottom
+        ) {
+            if (viewModel.deviceName != null
+                && (viewModel.castStatus != CastStatus.NOT_READY || viewModel.castStatus != CastStatus.CONNECTING)) {
+                Text("Casting to: " + viewModel.deviceName)
+            }
+            FilledTonalButton(
+                onClick = {
+                    viewModel.startCast()
+                },
+                enabled = viewModel.castStatus == CastStatus.READY,
+                shape = RoundedCornerShape(20),
+                modifier = Modifier.width(IntrinsicSize.Max)
+            ) {
+                Text("Cast")
+            }
+
+            IconButton(
+                enabled = viewModel.castStatus == CastStatus.PLAYING || viewModel.castStatus == CastStatus.PAUSED,
+                onClick = {
+                    if (viewModel.castStatus == CastStatus.PLAYING) {
+                        viewModel.pause()
+                    } else if (viewModel.castStatus == CastStatus.PAUSED) {
+                        viewModel.play()
+                    }
+                }) {
+                Icon(
+                    if (viewModel.castStatus == CastStatus.PLAYING) {
+                        Icons.Default.Pause
+                    } else {
+                        Icons.Filled.PlayArrow
+                    },
+                    contentDescription = "Пауза или запуск проигрывания"
                 )
             }
+            LinearProgressIndicator(
+                progress = { viewModel.currentPlayProgress }
+            )
         }
     }
 }
