@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.Bottom
         ) {
             if (viewModel.deviceName != null
-                && (viewModel.castStatus != CastStatus.NOT_READY || viewModel.castStatus != CastStatus.CONNECTING)) {
+                && (viewModel.castStatus == CastStatus.PAUSED || viewModel.castStatus == CastStatus.PLAYING)) {
                 Text("Casting to: " + viewModel.deviceName)
             }
             FilledTonalButton(

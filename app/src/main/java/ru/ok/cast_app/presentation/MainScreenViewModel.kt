@@ -45,7 +45,7 @@ class MainScreenViewModel(
     var url by mutableStateOf("https://videolink-test.mycdn.me/?pct=1&sig=6QNOvp0y3BE&ct=0&clientType=45&mid=193241622673&type=5")
     var castStatus by mutableStateOf(CastStatus.NOT_READY)
     var deviceName by mutableStateOf<String?>(null)
-    var currentPlayProgress by mutableFloatStateOf(0f)
+    var currentPlayProgress by mutableFloatStateOf(0.0f)
 
     private val httpUrlRegex =
         Regex("https?://(www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_+.~#?&/=]*)")
