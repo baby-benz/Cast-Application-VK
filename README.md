@@ -1,7 +1,7 @@
-![image](https://github.com/user-attachments/assets/63321cb0-4b8a-4343-a1de-afea194607ae)
-![image](https://github.com/user-attachments/assets/537fd0a9-48cc-48e7-824e-64b12ae97c96)
-![image](https://github.com/user-attachments/assets/d735b126-470b-4ed8-ad8c-e6f22c38e028)
-![image](https://github.com/user-attachments/assets/7a1a918a-0d8f-4d70-8007-90e61a7a99d5)
+<img src="https://github.com/user-attachments/assets/63321cb0-4b8a-4343-a1de-afea194607ae" width="230"/>
+<img src="https://github.com/user-attachments/assets/537fd0a9-48cc-48e7-824e-64b12ae97c96" width="230"/>
+<img src="https://github.com/user-attachments/assets/d735b126-470b-4ed8-ad8c-e6f22c38e028" width="230"/>
+<img src="https://github.com/user-attachments/assets/7a1a918a-0d8f-4d70-8007-90e61a7a99d5" width="230"/>
 
 # О приложении
 
